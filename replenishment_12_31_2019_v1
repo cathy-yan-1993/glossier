@@ -1,0 +1,70 @@
+--table of time between orders for each user
+with ranked_orders as (
+select
+order_email_address,
+order_number,
+created_at,
+rank() over (partition by order_email_address order by created_at) as rank
+from
+dbt.production.DIM_ORDERS_VIEW_ALL_TIME
+WHERE is_test_order='False'
+AND order_email_address NOT ILIKE '%@glossier.com%'
+AND order_state='complete'
+and channel = 'ecomm'
+AND unit_order_basket ilike '%boy brow%'
+)
+select 
+	order_email_address,
+	a.order_number order_number_1,
+	a.rank rank_1,
+	a.created_at order_1,
+	b.order_number order_number_2,
+	b.rank rank_2,
+	b.created_at order_2,
+	b.created_at::date-a.created_at::date time_diff
+from ranked_orders a
+join ranked_orders b
+using (order_email_address)
+where b.rank-a.rank=1
+order by time_diff asc;
+
+
+---average time in between purchases 
+--google some window functions 
+with ranked_orders as 
+(
+select
+order_email_address,
+order_number,
+created_at,
+rank() over (partition by order_email_address order by created_at) as rank
+from
+dbt.production.DIM_ORDERS_VIEW_ALL_TIME
+WHERE is_test_order='False'
+AND order_email_address NOT ILIKE '%@glossier.com%'
+AND order_state='complete'
+AND unit_order_basket ilike '%boy brow%'),
+
+time_diff_orders as (
+select 
+	order_email_address,
+	a.order_number order_number_1,
+	a.rank rank_1,
+	a.created_at order_1,
+	b.order_number order_number_2,
+	b.rank rank_2,
+	b.created_at order_2,
+	b.created_at::date-a.created_at::date as time_diff
+from ranked_orders a
+join ranked_orders b
+using (order_email_address)
+where b.rank-a.rank=1)
+
+select 
+rank_2,
+avg(time_diff)
+from time_diff_orders 
+where time_diff > 0
+group by rank_2
+order by rank_2 asc
+;
